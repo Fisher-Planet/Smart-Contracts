@@ -4,7 +4,7 @@ pragma solidity ^0.8.20;
 import "../general/BaseERC20.sol";
 
 contract FisherPlanetToken is BaseERC20 {
-    uint256 public constant _MAX_SUPPLY = 500_000_000 ether;
+    uint256 public constant _MAX_SUPPLY = 250_000_000 ether;
 
     constructor() BaseERC20("Fisher Planet Token", "FPT") {
         _mint(msg.sender, 20_000_000 ether);
