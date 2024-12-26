@@ -9,86 +9,88 @@ contract GameManager is BaseFactory {
 
     event Collected(address indexed player, uint256[] ids, uint256[] amounts);
 
-    // fish density in the map : 0=common, 1=uncommon, 2=rare, 3=epic, 4=legendary, 5=ancient
-    //bytes32 private constant _FISH_MAP = "00000000000111111112222223333445";
+    struct FishContainer {
+        uint32 score;
+        uint256[] ids;
+        uint256[] amounts;
+    }
+
+    /**
+     * @dev Map of fish in water according to rarity.The rarest fish will be the most difficult to find.
+     * fish density in the map : 0=common, 1=uncommon, 2=rare, 3=epic, 4=legendary, 5=ancient
+     */
     bytes private constant _FISH_MAP = "0000000000000000000000000000000111111111111111111222222223333445";
+
     uint256 private _nonce;
 
     constructor(IContractFactory _factory) BaseFactory(_factory) {}
 
-    function _getOffset(uint32[] memory buffer, uint256 tokenId) private pure returns (uint32 pos, uint32 id) {
-        pos = 0xFFFFFFFF;
-        id = uint32(tokenId);
-        unchecked {
-            for (uint32 x = 0; x < buffer.length; x++) {
-                if (buffer[x] != 0 && buffer[x] == id) {
-                    pos = x;
-                    break;
-                }
-            }
-        }
-    }
+    function _collectFishes(uint16 capacity) private view returns (FishContainer memory result) {
+        FishContainer memory fc;
+        fc.ids = factory.fishFactory().tokenIds();
+        fc.amounts = new uint256[](fc.ids.length);
+        require(fc.ids.length > 0, "id");
 
-    function _collectFishes(uint8 capacity) private view returns (uint256[] memory ids, uint256[] memory amounts, uint256 totalFish) {
-        uint256[] memory tokenIds = factory.fishFactory().tokenIds();
-        uint32[] memory buffer = new uint32[](capacity);
-        uint32[] memory counts = new uint32[](capacity);
+        uint8[6] memory _scores = [uint8(2), 4, 8, 16, 32, 64];
         uint256 payload = uint256(_nonce.randBytes());
         uint256 index;
-        uint32 offset;
-        uint32 tokenId;
-        uint8 i;
+        uint256 x;
 
         unchecked {
-            while (i < capacity) {
+            while (capacity > 0) {
                 if (payload & 0x1 == 1) {
-                    (offset, tokenId) = _getOffset(buffer, tokenIds[(uint8(_FISH_MAP[payload & 0x3F]) - 0x30)]);
-                    if (offset == 0xFFFFFFFF) {
-                        buffer[index] = tokenId;
-                        counts[index] = 1;
-                        index++;
-                    } else {
-                        counts[offset] += 1;
-                    }
+                    index = (uint8(_FISH_MAP[payload & 0x3F]) - 0x30);
+                    fc.amounts[index] += 1;
+                    fc.score += _scores[index];
                 }
-                i++;
-                payload >>= 2;
+                capacity--;
+
+                if (payload < 0xFF) {
+                    payload = uint256((payload + capacity).randBytes());
+                }
+
+                payload >>= 1;
             }
 
-            ids = new uint256[](index);
-            amounts = new uint256[](index);
+            index = 0;
+            FishContainer memory buffer;
+            buffer.ids = new uint256[](fc.ids.length);
+            buffer.amounts = new uint256[](fc.ids.length);
 
-            for (i = 0; i < index; i++) {
-                ids[i] = buffer[i];
-                amounts[i] = counts[i];
-                totalFish += counts[i];
+            for (x = 0; x < fc.ids.length; x++) {
+                if (fc.amounts[x] > 0) {
+                    buffer.ids[index] = fc.ids[x];
+                    buffer.amounts[index] = fc.amounts[x];
+                    index++;
+                }
+            }
+
+            result.ids = new uint256[](index);
+            result.amounts = new uint256[](index);
+            result.score = fc.score;
+
+            for (x = 0; x < index; x++) {
+                result.ids[x] = fc.ids[x];
+                result.amounts[x] = fc.amounts[x];
             }
         }
     }
 
-    function finishWork(uint256 boatId) external whenNotPaused nonReentrant {
+    function finishWorkAll() external whenNotPaused nonReentrant {
         address sender = msg.sender;
-
-        // check boat status
-        (uint8 Rarity, uint8 Capacity) = factory.dockManager().onBoatCollect(sender, boatId);
+        uint16 totalCapacity = factory.dockManager().onBoatCollect(sender);
 
         unchecked {
             _nonce++;
         }
 
-        // collect fishes
-        (uint256[] memory ids, uint256[] memory amounts, uint256 totalFish) = _collectFishes(Capacity);
+        FishContainer memory fc = _collectFishes(totalCapacity);
 
-        // we need set our event first for game engine
-        emit Collected(sender, ids, amounts);
+        emit Collected(sender, fc.ids, fc.amounts);
 
-        // there may not be any fish
-        if (ids.length > 0) {
-            // send new score to tournaments
-            factory.tournaments().onScoreChanged(sender, uint32(totalFish), Rarity);
-
-            // mint fishes
-            factory.nftFactory().operatorMintBatch(sender, ids, amounts, "");
+        if (fc.ids.length > 0) {
+            factory.tournaments().onScoreChanged(sender, fc.score);
+            factory.nftFactory().operatorMintBatch(sender, fc.ids, fc.amounts, "");
         }
     }
 }
