@@ -10,5 +10,5 @@ import "./IBaseFungible.sol";
 interface IFishFactory is IBaseFungible {
     function get(uint256 tokenId) external view returns (FishMetaData memory);
 
-    function getProduction(uint256 tokenId) external view returns (uint8);
+    function getProduction(uint256 tokenId) external view returns (uint16);
 }

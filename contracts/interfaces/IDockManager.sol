@@ -6,5 +6,5 @@ pragma solidity ^0.8.20;
  * Required for a base factory contract structure.
  */
 interface IDockManager {
-    function onBoatCollect(address from, uint256 boatId) external returns (uint8 Rarity, uint8 Capacity);
+    function onBoatCollect(address from) external returns (uint16 totalCapacity);
 }

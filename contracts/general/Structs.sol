@@ -57,7 +57,7 @@ enum EngineTypes {
 struct FishMetaData {
     uint8 Rarity;
     uint8 CreatureType;
-    uint8 Production;
+    uint16 Production;
     uint32 Id;
 }
 

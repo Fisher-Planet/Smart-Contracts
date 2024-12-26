@@ -9,6 +9,8 @@ contract DockManager is BaseFactory, IDockManager {
     using UtilLib for *;
     using ArrayLib for uint256[];
 
+    error FuelMustRunOut(uint256 boatId);
+
     event Deposit(address indexed account, uint256 tokenId, uint256 amount);
     event Withdraw(address indexed account, uint256 boatId, uint256 tokenId, uint256 amount);
     event WithdrawAll(address indexed account, uint256 totalBoat);
@@ -47,6 +49,13 @@ contract DockManager is BaseFactory, IDockManager {
         uint256 SpeedUpPrice;
     }
 
+    struct StatusInfo {
+        uint8 totalIdle;
+        uint8 totalBusyOrCollect;
+        uint8 totalRefuell;
+        uint8 totalBoat;
+    }
+
     // max boat per account
     uint8 private constant _MAX_BOAT_COUNT = 16;
 
@@ -64,7 +73,8 @@ contract DockManager is BaseFactory, IDockManager {
 
     constructor(IContractFactory _factory) BaseFactory(_factory) {}
 
-    function updatePrices(PriceData[] calldata inputs) external onlyRole(MANAGER_ROLE) {
+    function updatePrices(PriceData[] calldata inputs, uint8 percent) external onlyRole(MANAGER_ROLE) {
+        require(percent > 0 && percent < 81, "sp");
         IBoatFactory boatFactory = factory.boatFactory();
         for (uint i = 0; i < inputs.length; i++) {
             PriceData memory input = inputs[i];
@@ -72,17 +82,15 @@ contract DockManager is BaseFactory, IDockManager {
                 revert TokenNotExists(0);
             }
 
-            require(input.Refuell > 0.000000001 ether, "Refuell");
+            require(input.Refuell > 0.000000001 ether, "rf");
 
             BoatMetaData memory meta = boatFactory.get(input.TokenId);
-            require(meta.FuelTank > 0, "FuelTank");
 
-            uint256 perSecondPrice = 0;
+            uint256 perSecondPrice;
             if (meta.EngineType != uint8(EngineTypes.Ufo)) {
-                require(meta.WaitTime > 0, "WaitTime");
-                uint256 perWorkCost = input.Refuell / meta.FuelTank;
-                perSecondPrice = perWorkCost / (meta.WaitTime * 3600);
-                require(perSecondPrice > 0, "perSecondPrice");
+                require(meta.WaitTime > 0, "wt");
+                perSecondPrice = ((input.Refuell * percent) / 100) / (meta.WaitTime * 3600);
+                require(perSecondPrice > 0, "ps");
             }
 
             PriceData storage price = _prices[input.TokenId];
@@ -121,21 +129,34 @@ contract DockManager is BaseFactory, IDockManager {
 
     // **** FOR OPERATORS *****
     //--------------------
-    function onBoatCollect(address from, uint256 boatId) public onlyRole(OPERATOR_ROLE) whenNotPaused returns (uint8 Rarity, uint8 Capacity) {
-        BoatData storage boat = _boat[boatId][from];
-        if (boat.TokenId == 0) {
-            revert NotExists();
+    function onBoatCollect(address from) public onlyRole(OPERATOR_ROLE) whenNotPaused returns (uint16 totalCapacity) {
+        uint256[] storage ids = _boatIds[from];
+        if (ids.length == 0) {
+            revert InsufficientBalance();
         }
 
-        (Rarity, Capacity) = factory.boatFactory().getRC(boat.TokenId);
+        IBoatFactory boatFactory = factory.boatFactory();
 
-        require(boat.IsWorking, "Boat not ready");
-        if (boat.EndTime > 0) {
-            uint64 remainTime = boat.EndTime.remainTime();
-            require(remainTime == 0, "Boat still have time");
-            boat.EndTime = 0;
+        unchecked {
+            for (uint i = 0; i < ids.length; i++) {
+                BoatData storage boat = _boat[ids[i]][from];
+                if (boat.IsWorking) {
+                    uint64 remainTime;
+                    if (boat.EndTime > 0) {
+                        remainTime = boat.EndTime.remainTime();
+                    }
+                    if (remainTime == 0) {
+                        totalCapacity += boatFactory.getCapacity(boat.TokenId);
+                        boat.IsWorking = false;
+                        if (boat.EndTime > 0) {
+                            boat.EndTime = 0;
+                        }
+                    }
+                }
+            }
         }
-        boat.IsWorking = false;
+
+        require(totalCapacity > 0, "No working boats");
     }
 
     // **** FOR ACCOUNTS *****
@@ -241,7 +262,7 @@ contract DockManager is BaseFactory, IDockManager {
 
     function deposit(uint32 tokenId, uint8 amount) external whenNotPaused nonReentrant {
         address sender = msg.sender;
-        require(amount > 0 && amount <= _MAX_BOAT_COUNT, "Max 64 boat");
+        require(amount > 0 && amount <= _MAX_BOAT_COUNT, "Max 16 boat");
 
         IBoatFactory boatFactory = factory.boatFactory();
         uint256 _balance = boatFactory.balanceOf(sender, tokenId);
@@ -295,6 +316,10 @@ contract DockManager is BaseFactory, IDockManager {
             revert NotExists();
         }
 
+        if (boat.EngineType != uint8(EngineTypes.Solar) && boat.Fuel > 0) {
+            revert FuelMustRunOut(boat.BoatId);
+        }
+
         uint256 tokenId = boat.TokenId;
         boat.BoatId = 0;
 
@@ -307,35 +332,6 @@ contract DockManager is BaseFactory, IDockManager {
         factory.boatFactory().withdraw(sender, tokenId, 1);
 
         emit Withdraw(sender, boatId, tokenId, 1);
-    }
-
-    function withdrawAll() external whenNotPaused nonReentrant {
-        address sender = msg.sender;
-        uint256[] storage boatIds = _boatIds[sender];
-        uint256 len = boatIds.length;
-        if (len == 0) {
-            revert InsufficientBalance();
-        }
-
-        uint256[] memory ids = new uint256[](len);
-        uint256[] memory amounts = new uint256[](len);
-
-        unchecked {
-            for (uint i = 0; i < len; i++) {
-                BoatData storage boat = _boat[boatIds[i]][sender];
-
-                ids[i] = boat.TokenId;
-                amounts[i] = 1;
-
-                boat.BoatId = 0;
-            }
-        }
-
-        delete _boatIds[sender];
-
-        factory.boatFactory().withdrawBatch(sender, ids, amounts);
-
-        emit WithdrawAll(sender, len);
     }
 
     function getTotalCost(address from, uint8 arg) external view returns (uint256[2] memory) {
@@ -385,13 +381,6 @@ contract DockManager is BaseFactory, IDockManager {
         return _boat[boatId][from];
     }
 
-    struct StatusInfo {
-        uint8 totalIdle;
-        uint8 totalBusyOrCollect;
-        uint8 totalRefuell;
-        uint8 totalBoat;
-    }
-
     function getBoatInfo(address from, uint8 arg) external view returns (BoatInfo[] memory result, StatusInfo memory info) {
         from.throwIfEmpty();
         require(arg >= 1 && arg <= 4, "arg");
@@ -399,12 +388,12 @@ contract DockManager is BaseFactory, IDockManager {
         uint256[] storage boatIds = _boatIds[from];
         uint32 index;
         bool found;
+
         BoatInfo[] memory buffer = new BoatInfo[](boatIds.length);
         info.totalBoat = uint8(boatIds.length);
 
         for (uint i = 0; i < boatIds.length; i++) {
             BoatData storage boat = _boat[boatIds[i]][from];
-
             found = false;
             if (!boat.IsWorking && (boat.EngineType == uint8(EngineTypes.Solar) || boat.Fuel > 0)) {
                 info.totalIdle++;

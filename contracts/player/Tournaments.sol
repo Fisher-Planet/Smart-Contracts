@@ -23,7 +23,6 @@ contract Tournaments is BaseFactory, ITournaments {
     struct TournamentConfig {
         bool isActive;
         uint8 durationDay;
-        uint8 boatRarity;
         uint64 endTime;
     }
 
@@ -31,7 +30,6 @@ contract Tournaments is BaseFactory, ITournaments {
         bool isActive;
         bool isEnd;
         uint8 durationDay;
-        uint8 boatRarity;
         uint32 totalContender;
         uint64 remainTime;
     }
@@ -50,7 +48,7 @@ contract Tournaments is BaseFactory, ITournaments {
     mapping(address => EntrantData) private _entrant;
 
     constructor(IContractFactory _factory) BaseFactory(_factory) {
-        _setConfig(true, 7, 1);
+        _setConfig(false, 14);
     }
 
     modifier checkBlackList() {
@@ -58,18 +56,17 @@ contract Tournaments is BaseFactory, ITournaments {
         _;
     }
 
-    function _setConfig(bool isActive, uint8 durationDay, uint8 boatRarity) private {
+    function _setConfig(bool isActive, uint8 durationDay) private {
         require(durationDay > 0 && durationDay < 181, "durationDay range 1-180");
-        boatRarity.throwIfRarityInvalid();
         // delete prev tournament players
         if (_accounts.length > 0) {
             delete _accounts;
         }
-        config = TournamentConfig({isActive: isActive, durationDay: durationDay, boatRarity: boatRarity, endTime: durationDay.createEndTime(1 days)});
+        config = TournamentConfig({isActive: isActive, durationDay: durationDay, endTime: durationDay.createEndTime(1 days)});
     }
 
-    function setConfig(bool isActive, uint8 durationDay, uint8 boatRarity) external onlyRole(MANAGER_ROLE) {
-        _setConfig(isActive, durationDay, boatRarity);
+    function setConfig(bool isActive, uint8 durationDay) external onlyRole(MANAGER_ROLE) {
+        _setConfig(isActive, durationDay);
     }
 
     function setBlackList(bool isBlackList, address[] calldata inputs) external onlyRole(MANAGER_ROLE) {
@@ -80,8 +77,8 @@ contract Tournaments is BaseFactory, ITournaments {
         }
     }
 
-    function onScoreChanged(address from, uint32 score, uint8 boatRarity) public onlyRole(OPERATOR_ROLE) whenNotPaused {
-        if (config.isActive && config.boatRarity == boatRarity && config.endTime > block.timestamp) {
+    function onScoreChanged(address from, uint32 score) public onlyRole(OPERATOR_ROLE) whenNotPaused {
+        if (config.isActive && config.endTime > block.timestamp) {
             EntrantData storage entrant = _entrant[from];
             if (entrant.endTime == config.endTime && _blackList[from] == false) {
                 entrant.score += score;
@@ -91,14 +88,7 @@ contract Tournaments is BaseFactory, ITournaments {
 
     function _tournamentInfo() private view returns (TournamentInfo memory result) {
         uint64 remainTime = config.endTime.remainTime();
-        result = TournamentInfo({
-            isActive: config.isActive,
-            isEnd: remainTime == 0,
-            durationDay: config.durationDay,
-            boatRarity: config.boatRarity,
-            totalContender: uint32(_accounts.length),
-            remainTime: remainTime
-        });
+        result = TournamentInfo({isActive: config.isActive, isEnd: remainTime == 0, durationDay: config.durationDay, totalContender: uint32(_accounts.length), remainTime: remainTime});
     }
 
     function _sort() private view returns (ContenderOwner[] memory result) {

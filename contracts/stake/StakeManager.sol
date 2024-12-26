@@ -55,33 +55,9 @@ contract StakeManager is BaseFactory {
     // Contract settings
     ConfigData private _config;
 
-    // ************ REMOVE WHEN LIVE !!! ************
-    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     constructor(IContractFactory _factory) BaseFactory(_factory) {
-        _setConfig(ConfigData({minDurationDay: 14, dailyFPTMax: 2000, dailyFPTMin: 1000}));
+        _setConfig(ConfigData({minDurationDay: 2, dailyFPTMax: 2000, dailyFPTMin: 1000}));
     }
-
-    // ************ REMOVE WHEN LIVE !!! ************
-    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    // this only for test players. 20k each
-
-    // ************ REMOVE WHEN LIVE !!! FPT, AFT and STAKEMANAGER ************
-    mapping(address => bool) private mintMap;
-
-    function claimToken() external whenNotPaused {
-        address to = msg.sender;
-        to.throwIfEmpty();
-
-        bool isMinted = mintMap[to];
-        require(!isMinted, "Each address can mint once.");
-        mintMap[to] = true;
-
-        factory.planetToken().operatorMint(to, 20000 ether);
-        factory.farmingToken().operatorMint(to, 20000 ether);
-    }
-
-    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    // *********************************************
 
     function _setConfig(ConfigData memory input) private {
         require(input.dailyFPTMax > 0, "dailyFPTMax");

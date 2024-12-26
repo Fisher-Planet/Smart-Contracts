@@ -43,7 +43,7 @@ contract FishFactory is BaseFungible, IFishFactory {
         return _metas[_offset(tokenId)];
     }
 
-    function getProduction(uint256 tokenId) public view returns (uint8) {
+    function getProduction(uint256 tokenId) public view returns (uint16) {
         return _metas[_offset(tokenId)].Production;
     }
 

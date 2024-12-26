@@ -117,7 +117,7 @@ contract AquaFarming is BaseFactory, IAquaFarming {
         _balances[id][from] += amount;
     }
 
-    function _tp(uint8 production, uint64 amount) private pure returns (uint256 tp) {
+    function _tp(uint16 production, uint64 amount) private pure returns (uint256 tp) {
         if (production == 0) {
             revert InvalidValue(production);
         }
