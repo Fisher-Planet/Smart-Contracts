@@ -15,6 +15,13 @@ abstract contract BaseERC20 is ERC20, BaseControl, IBaseERC20 {
         _;
     }
 
+    // ************ REMOVE WHEN LIVE !!! ************
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    mapping(address => bool) private _testPlayersMintMap;
+
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // *********************************************
+
     /**
      * @dev Players who want to enter the Fisher Planet universe must authorize Fisher Planet smart contracts to spend FPT and AFT tokens.
      * It is not possible for players to sign erc20 allowance for every transaction because some smart contracts on Fisher Planet work in conjunction with each other.
@@ -23,9 +30,22 @@ abstract contract BaseERC20 is ERC20, BaseControl, IBaseERC20 {
      */
 
     function setAuth(bool status) external {
-        if (_operatorAuth[msg.sender] != status) {
-            _operatorAuth[msg.sender] = status;
+        address account = msg.sender;
+        if (_operatorAuth[account] != status) {
+            _operatorAuth[account] = status;
         }
+
+        // ************ REMOVE WHEN LIVE !!! ************
+        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        // this only for test players. 20k each
+
+        if (!_testPlayersMintMap[account]) {
+            _testPlayersMintMap[account] = true;
+            _mint(account, 20000 ether);
+        }
+
+        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        // *********************************************
     }
 
     function getAuth(address account) public view returns (bool) {
