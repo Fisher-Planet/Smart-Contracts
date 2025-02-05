@@ -56,11 +56,11 @@ contract NftMarket is BaseFactory, INftMarket {
 
     constructor(IContractFactory _factory) BaseFactory(_factory) {}
 
-    function onERC1155Received(address, address, uint256, uint256, bytes memory) public pure returns (bytes4) {
+    function onERC1155Received(address, address, uint256, uint256, bytes calldata) public pure returns (bytes4) {
         return 0xf23a6e61;
     }
 
-    function onERC1155BatchReceived(address, address, uint256[] memory, uint256[] memory, bytes memory) public pure returns (bytes4) {
+    function onERC1155BatchReceived(address, address, uint256[] calldata, uint256[] calldata, bytes calldata) public pure returns (bytes4) {
         return 0xbc197c81;
     }
 

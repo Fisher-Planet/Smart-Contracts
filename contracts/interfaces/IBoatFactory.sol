@@ -8,19 +8,17 @@ import "./IBaseFungible.sol";
  * Required for a base factory contract structure.
  */
 interface IBoatFactory is IBaseFungible {
-    function get(uint256 tokenId) external view returns (BoatMetaData memory);
-
-    function getWaitTime(uint256 tokenId) external view returns (uint16);
-
-    function getCapacity(uint256 tokenId) external view returns (uint8);
+    function getRarity(uint256 tokenId) external view returns (uint8);
 
     function getEngineType(uint256 tokenId) external view returns (uint8);
 
+    function getCapacity(uint256 tokenId) external view returns (uint8);
+
     function getFuelTank(uint256 tokenId) external view returns (uint8);
 
-    function getRC(uint256 tokenId) external view returns (uint8 Rarity, uint8 Capacity);
+    function getWaitTime(uint256 tokenId) external view returns (uint16);
 
-    function getRF(uint256 tokenId) external view returns (uint8 Rarity, uint8 FuelTank);
+    function get(uint256 tokenId) external view returns (BoatMetaData memory);
 
-    function getRE(uint256 tokenId) external view returns (uint8 Rarity, uint8 EngineType);
+    function getAll() external view returns (BoatMetaData[] memory result);
 }

@@ -25,66 +25,80 @@ contract GameManager is BaseFactory {
 
     constructor(IContractFactory _factory) BaseFactory(_factory) {}
 
-    function _collectFishes(uint16 capacity) private view returns (FishContainer memory result) {
+    function _collectFishes(uint256 currentNonce, uint256 capacity, uint256 totalReadyBoat) private view returns (FishContainer memory result) {
+        if (totalReadyBoat < 1 || totalReadyBoat > 16) {
+            revert InvalidValue(totalReadyBoat);
+        }
+
         FishContainer memory fc;
         fc.ids = factory.fishFactory().tokenIds();
         fc.amounts = new uint256[](fc.ids.length);
-        require(fc.ids.length > 0, "id");
 
-        uint8[6] memory _scores = [uint8(2), 4, 8, 16, 32, 64];
-        uint256 payload = uint256(_nonce.randBytes());
+        uint256 payload = uint256(currentNonce.randBytes());
+        uint256 fishCount = payload % capacity;
+        uint256 fishSwap = payload;
+
         uint256 index;
-        uint256 x;
+        uint256 i;
 
-        unchecked {
-            while (capacity > 0) {
-                if (payload & 0x1 == 1) {
-                    index = (uint8(_FISH_MAP[payload & 0x3F]) - 0x30);
-                    fc.amounts[index] += 1;
-                    fc.score += _scores[index];
-                }
-                capacity--;
+        if (fishCount < totalReadyBoat) {
+            // range of 1 ~ 16 depends on boat count.
+            fishCount = totalReadyBoat;
+        }
 
-                if (payload < 0xFF) {
-                    payload = uint256((payload + capacity).randBytes());
-                }
+        for (i = 0; i < fishCount; ) {
+            fishSwap = (fishSwap >> 1) ^ (fishSwap << 3);
+            index = uint8(_FISH_MAP[fishSwap & 0x3F]) - 0x30;
 
-                payload >>= 1;
+            unchecked {
+                fc.amounts[index] += 1;
+                i++;
             }
+        }
 
-            index = 0;
-            FishContainer memory buffer;
-            buffer.ids = new uint256[](fc.ids.length);
-            buffer.amounts = new uint256[](fc.ids.length);
-
-            for (x = 0; x < fc.ids.length; x++) {
-                if (fc.amounts[x] > 0) {
-                    buffer.ids[index] = fc.ids[x];
-                    buffer.amounts[index] = fc.amounts[x];
+        index = 0;
+        for (i = 0; i < fc.ids.length; ) {
+            unchecked {
+                if (fc.amounts[i] != 0) {
                     index++;
                 }
+                i++;
             }
+        }
 
-            result.ids = new uint256[](index);
-            result.amounts = new uint256[](index);
-            result.score = fc.score;
+        // set score
+        totalReadyBoat = payload % (totalReadyBoat * 16);
+        if (totalReadyBoat < 16) {
+            // range of 16 ~ 256 depends on number of boats and randomness.
+            totalReadyBoat = 16;
+        }
 
-            for (x = 0; x < index; x++) {
-                result.ids[x] = fc.ids[x];
-                result.amounts[x] = fc.amounts[x];
+        result.ids = new uint256[](index);
+        result.amounts = new uint256[](index);
+        result.score = uint32(totalReadyBoat);
+
+        index = 0;
+        for (i = 0; i < fc.ids.length; ) {
+            unchecked {
+                if (fc.amounts[i] != 0) {
+                    result.ids[index] = fc.ids[i];
+                    result.amounts[index] = fc.amounts[i];
+                    index++;
+                }
+                i++;
             }
         }
     }
 
     function finishWorkAll() external whenNotPaused nonReentrant {
         address sender = msg.sender;
-        uint16 totalCapacity = factory.dockManager().onBoatCollect(sender);
-
+        (uint16 totalCapacity, uint16 totalReadyBoat) = factory.dockManager().onBoatCollect(sender);
+        uint256 currentNonce;
         unchecked {
-            _nonce++;
+            currentNonce = ++_nonce;
         }
 
-        FishContainer memory fc = _collectFishes(totalCapacity);
+        FishContainer memory fc = _collectFishes(currentNonce, totalCapacity, totalReadyBoat);
 
         emit Collected(sender, fc.ids, fc.amounts);
 

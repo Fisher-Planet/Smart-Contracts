@@ -22,26 +22,30 @@ library ArrayLib {
 
     function getIndex(uint256[] storage arr, uint256 input) internal view returns (bool found, uint256 index) {
         require(input > 0, "Arr:input");
-        unchecked {
-            for (uint256 i = 0; i < arr.length; i++) {
-                if (arr[i] == input) {
-                    found = true;
-                    index = i;
-                    break;
-                }
+        uint256 len = arr.length;
+        for (uint256 i = 0; i < len; ) {
+            if (arr[i] == input) {
+                found = true;
+                index = i;
+                break;
+            }
+            unchecked {
+                i++;
             }
         }
     }
 
     function getIndex(address[] storage arr, address input) internal view returns (bool found, uint256 index) {
         require(input != address(0), "Arr:input");
-        unchecked {
-            for (uint256 i = 0; i < arr.length; i++) {
-                if (arr[i] == input) {
-                    found = true;
-                    index = i;
-                    break;
-                }
+        uint256 len = arr.length;
+        for (uint256 i = 0; i < len; ) {
+            if (arr[i] == input) {
+                found = true;
+                index = i;
+                break;
+            }
+            unchecked {
+                i++;
             }
         }
     }

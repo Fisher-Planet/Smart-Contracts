@@ -7,14 +7,19 @@ import "../library/UtilLib.sol";
 contract BoatFactory is BaseFungible, IBoatFactory {
     using UtilLib for *;
 
-    // all boat meta datas
-    BoatMetaData[] private _metas;
+    // BoatMetaData struct offsets
+    uint8 private constant RARITY_OFFSET = 0;
+    uint8 private constant ENGINE_TYPE_OFFSET = 8;
+    uint8 private constant CAPACITY_OFFSET = 16;
+    uint8 private constant FUEL_TANK_OFFSET = 24;
+    uint8 private constant WAIT_TIME_OFFSET = 32;
+    uint8 private constant ID_OFFSET = 48;
 
     constructor(IContractFactory _factory) BaseFungible(_factory) {}
 
-    function add(BoatMetaData[] calldata inputs) external onlyRole(MANAGER_ROLE) {
-        for (uint256 i = 0; i < inputs.length; i++) {
-            BoatMetaData memory input = inputs[i];
+    function setMetaData(BoatMetaData[] calldata inputs) external onlyRole(MANAGER_ROLE) {
+        for (uint256 i = 0; i < inputs.length; ) {
+            BoatMetaData calldata input = inputs[i];
 
             require(input.Id >= 128 && input.Id <= 192, "Id range");
             require(input.Capacity > 1 && input.Capacity < 65, "Capacity");
@@ -30,81 +35,72 @@ contract BoatFactory is BaseFungible, IBoatFactory {
 
             input.Rarity.throwIfRarityInvalid();
 
-            if (exists(input.Id)) {
-                revert Exists();
+            super._setData(input.Id, _packData(input));
+
+            unchecked {
+                i++;
             }
-
-            _metas.push(BoatMetaData({Rarity: input.Rarity, EngineType: input.EngineType, Capacity: input.Capacity, FuelTank: input.FuelTank, WaitTime: input.WaitTime, Id: input.Id}));
-
-            super.addTokenId(input.Id, _metas.length);
         }
     }
 
-    function setWaitTimes(uint32[] calldata ids, uint16[] calldata values) external onlyRole(MANAGER_ROLE) {
-        require(ids.length <= _metas.length && ids.length == values.length, "overflow");
-        for (uint i = 0; i < ids.length; i++) {
-            _metas[_offset(ids[i])].WaitTime = values[i];
-        }
+    function _packData(BoatMetaData calldata data) private pure returns (uint256) {
+        return
+            (uint256(data.Rarity) << RARITY_OFFSET) |
+            (uint256(data.EngineType) << ENGINE_TYPE_OFFSET) |
+            (uint256(data.Capacity) << CAPACITY_OFFSET) |
+            (uint256(data.FuelTank) << FUEL_TANK_OFFSET) |
+            (uint256(data.WaitTime) << WAIT_TIME_OFFSET) |
+            (uint256(data.Id) << ID_OFFSET);
     }
 
-    function setCapacities(uint32[] calldata ids, uint8[] calldata values) external onlyRole(MANAGER_ROLE) {
-        require(ids.length <= _metas.length && ids.length == values.length, "overflow");
-        for (uint i = 0; i < ids.length; i++) {
-            _metas[_offset(ids[i])].Capacity = values[i];
-        }
-    }
-
-    function setFuelTanks(uint32[] calldata ids, uint8[] calldata values) external onlyRole(MANAGER_ROLE) {
-        require(ids.length <= _metas.length && ids.length == values.length, "overflow");
-        for (uint i = 0; i < ids.length; i++) {
-            _metas[_offset(ids[i])].FuelTank = values[i];
-        }
+    function _unpackData(uint256 tokenId) private view returns (BoatMetaData memory) {
+        uint256 data = getData(tokenId);
+        return
+            BoatMetaData(
+                uint8((data >> RARITY_OFFSET) & type(uint8).max),
+                uint8((data >> ENGINE_TYPE_OFFSET) & type(uint8).max),
+                uint8((data >> CAPACITY_OFFSET) & type(uint8).max),
+                uint8((data >> FUEL_TANK_OFFSET) & type(uint8).max),
+                uint16((data >> WAIT_TIME_OFFSET) & type(uint16).max),
+                uint32((data >> ID_OFFSET) & type(uint32).max)
+            );
     }
 
     /* QUERY FOR OPERATORS */
     // ------------------------------------
 
-    function get(uint256 tokenId) public view returns (BoatMetaData memory) {
-        return _metas[_offset(tokenId)];
-    }
-
-    function getWaitTime(uint256 tokenId) public view returns (uint16) {
-        return _metas[_offset(tokenId)].WaitTime;
+    function getRarity(uint256 tokenId) public view returns (uint8) {
+        return uint8((getData(tokenId) >> RARITY_OFFSET) & type(uint8).max);
     }
 
     function getEngineType(uint256 tokenId) public view returns (uint8) {
-        return _metas[_offset(tokenId)].EngineType;
+        return uint8((getData(tokenId) >> ENGINE_TYPE_OFFSET) & type(uint8).max);
     }
 
     function getCapacity(uint256 tokenId) public view returns (uint8) {
-        return _metas[_offset(tokenId)].Capacity;
+        return uint8((getData(tokenId) >> CAPACITY_OFFSET) & type(uint8).max);
     }
 
     function getFuelTank(uint256 tokenId) public view returns (uint8) {
-        return _metas[_offset(tokenId)].FuelTank;
+        return uint8((getData(tokenId) >> FUEL_TANK_OFFSET) & type(uint8).max);
     }
 
-    function getRC(uint256 tokenId) public view returns (uint8 Rarity, uint8 Capacity) {
-        BoatMetaData storage meta = _metas[_offset(tokenId)];
-        Rarity = meta.Rarity;
-        Capacity = meta.Capacity;
+    function getWaitTime(uint256 tokenId) public view returns (uint16) {
+        return uint16((getData(tokenId) >> WAIT_TIME_OFFSET) & type(uint16).max);
     }
 
-    function getRF(uint256 tokenId) public view returns (uint8 Rarity, uint8 FuelTank) {
-        BoatMetaData storage meta = _metas[_offset(tokenId)];
-        Rarity = meta.Rarity;
-        FuelTank = meta.FuelTank;
+    function get(uint256 tokenId) public view returns (BoatMetaData memory) {
+        return _unpackData(tokenId);
     }
 
-    function getRE(uint256 tokenId) public view returns (uint8 Rarity, uint8 EngineType) {
-        BoatMetaData storage meta = _metas[_offset(tokenId)];
-        Rarity = meta.Rarity;
-        EngineType = meta.EngineType;
-    }
-
-    /* QUERY FOR DAPP */
-    // ------------------------------------
-    function getAll() external view returns (BoatMetaData[] memory) {
-        return _metas;
+    function getAll() public view returns (BoatMetaData[] memory result) {
+        uint256 len = _tokenIds.length;
+        result = new BoatMetaData[](len);
+        for (uint i = 0; i < len; ) {
+            result[i] = _unpackData(_tokenIds[i]);
+            unchecked {
+                i++;
+            }
+        }
     }
 }

@@ -7,6 +7,8 @@ import "../general/Structs.sol";
  * Required for a base factory contract structure.
  */
 interface IBaseFungible {
+    function getData(uint256 tokenId) external view returns (uint256);
+
     function deposit(address from, uint256 id, uint256 amount) external;
 
     function depositBatch(address from, uint256[] calldata ids, uint256[] calldata amounts) external;

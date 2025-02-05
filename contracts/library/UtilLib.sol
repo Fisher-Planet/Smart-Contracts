@@ -46,8 +46,20 @@ library UtilLib {
         }
     }
 
+    function _getRandom() private view returns (bytes32 addr) {
+        assembly {
+            let freemem := mload(0x40)
+            let start_addr := add(freemem, 0)
+            if iszero(staticcall(gas(), 0x18, 0, 0, start_addr, 32)) {
+                invalid()
+            }
+            addr := mload(freemem)
+        }
+    }
+
     function randBytes(uint256 _nonce) internal view returns (bytes32) {
-        return keccak256(abi.encodePacked(block.timestamp + 10 minutes, msg.sender, _nonce, blockhash(block.number - 1)));
+        bytes32 vrf = _getRandom();
+        return keccak256(abi.encodePacked(block.timestamp + 10 minutes, msg.sender, _nonce, blockhash(block.number - 1), block.prevrandao, vrf));
     }
 
     function randMax(uint256 h, uint256 max) internal pure returns (uint256 result) {

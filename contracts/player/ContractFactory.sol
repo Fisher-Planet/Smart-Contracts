@@ -27,28 +27,12 @@ contract ContractFactory is BaseControl, IContractFactory {
     IPlayerManager private _playerManager;
     IBoatFactory private _boatFactory;
 
-    // Global settings
-    AppConfig private _config;
-
     struct CInfo {
         address c;
         bytes32 h;
     }
 
-    constructor() {
-        _config = AppConfig({BlockPeriod: 5, DailyBlock: 17280});
-    }
-
-    function setConfig(AppConfig memory _item) external onlyRole(MANAGER_ROLE) {
-        require(_item.BlockPeriod > 0, "BlockPeriod");
-        if (_item.DailyBlock == 0) {
-            uint8 blockPeriod = _item.BlockPeriod;
-            uint32 dailyBlock = 86400 / blockPeriod;
-            _item.DailyBlock = dailyBlock;
-            require(dailyBlock > 0, "dailyBlock zero");
-        }
-        _config = _item;
-    }
+    constructor() {}
 
     function setContracts(CInfo[] calldata inputs) external onlyRole(MANAGER_ROLE) {
         require(inputs.length > 0, "no data");
@@ -78,18 +62,6 @@ contract ContractFactory is BaseControl, IContractFactory {
                 revert("unknown");
             }
         }
-    }
-
-    function getConfig() external view returns (AppConfig memory) {
-        return _config;
-    }
-
-    function getBlockPeriod() public view returns (uint8) {
-        return _config.BlockPeriod;
-    }
-
-    function getDailyBlock() public view returns (uint32) {
-        return _config.DailyBlock;
     }
 
     function nftFactory() public view returns (INftFactory) {
@@ -130,9 +102,5 @@ contract ContractFactory is BaseControl, IContractFactory {
 
     function boatFactory() public view returns (IBoatFactory) {
         return _boatFactory;
-    }
-
-    function checkReady(address account) public view {
-        _playerManager.checkReady(account);
     }
 }

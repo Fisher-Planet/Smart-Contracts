@@ -10,18 +10,21 @@ contract FisherPlanetToken is BaseERC20 {
         _mint(msg.sender, 20_000_000 ether);
     }
 
-    function mint(uint256 amount) external onlyRole(MANAGER_ROLE) {
+    function mint(address to, uint256 amount) external whenNotPaused onlyRole(MANAGER_ROLE) {
         require(amount > 0, "amount");
         uint256 totalMinted = totalSupply() + amount;
         require(totalMinted <= _MAX_SUPPLY, "_MAX_SUPPLY");
-        _mint(msg.sender, amount);
+        if (to == address(0)) {
+            to = msg.sender;
+        }
+        _mint(to, amount);
     }
 
-    function burn(uint256 amount) external onlyRole(MANAGER_ROLE) {
+    function burn(uint256 amount) external whenNotPaused onlyRole(MANAGER_ROLE) {
         _burn(msg.sender, amount);
     }
 
-    function airDrop(address[] calldata accounts, uint256[] calldata amounts) external onlyRole(MANAGER_ROLE) {
+    function airDrop(address[] calldata accounts, uint256[] calldata amounts) external whenNotPaused onlyRole(MANAGER_ROLE) {
         require(accounts.length > 0, "no input");
         require(accounts.length == amounts.length, "ids and amounts length mismatch");
         for (uint256 i = 0; i < accounts.length; ++i) {

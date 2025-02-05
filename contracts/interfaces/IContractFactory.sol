@@ -15,10 +15,6 @@ import "../interfaces/IBoatFactory.sol";
  * Almost all contracts use this interface to communicate
  */
 interface IContractFactory {
-    function getBlockPeriod() external view returns (uint8);
-
-    function getDailyBlock() external view returns (uint32);
-
     function nftFactory() external view returns (INftFactory);
 
     function planetToken() external view returns (IBaseERC20);
@@ -38,6 +34,4 @@ interface IContractFactory {
     function playerManager() external view returns (IPlayerManager);
 
     function boatFactory() external view returns (IBoatFactory);
-
-    function checkReady(address account) external view;
 }

@@ -6,21 +6,21 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 abstract contract BaseControl is AccessControl, Pausable, ReentrancyGuard {
     bytes32 internal constant MANAGER_ROLE = keccak256("MANAGER_ROLE");
-    bytes32 internal constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
     bytes32 internal constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE");
+    bytes32 internal constant MOD_ROLE = keccak256("MOD_ROLE");
 
     constructor() {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(MANAGER_ROLE, msg.sender);
-        _grantRole(PAUSER_ROLE, msg.sender);
+        _grantRole(MOD_ROLE, msg.sender);
         _grantRole(OPERATOR_ROLE, msg.sender);
     }
 
-    function pause() external onlyRole(PAUSER_ROLE) {
+    function pause() external onlyRole(MANAGER_ROLE) {
         _pause();
     }
 
-    function unpause() external onlyRole(PAUSER_ROLE) {
+    function unpause() external onlyRole(MANAGER_ROLE) {
         _unpause();
     }
 

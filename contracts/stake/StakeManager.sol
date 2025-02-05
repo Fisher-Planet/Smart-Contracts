@@ -7,18 +7,21 @@ import "../library/UtilLib.sol";
 contract StakeManager is BaseFactory {
     using UtilLib for *;
 
-    event Deposit(address indexed account, uint256 amount, TokenTypes tokenType);
+    error Inactive();
+    error MinAmountMustBe(uint256);
+    error StakingPeriodNotYetOver();
 
-    event Withdraw(address indexed account, uint256 amount, TokenTypes tokenType);
+    event Deposit(address indexed account, uint256 amount, TokenTypes tokenType);
+    event Withdraw(address indexed account, uint256 amount, uint256 rewards, TokenTypes tokenType);
 
     struct StakerInfo {
         TokenTypes tokenType;
         uint8 minDurationDay;
-        uint32 dailyPrizePool;
         uint64 remainTime;
+        uint256 dailyPrizePool;
         uint256 totalStaked;
-        uint256 currentReward;
-        uint256 perBlockReward;
+        uint256 estimatedReward;
+        uint256 perSecondReward;
         uint256 balance;
         uint256 poolSize;
     }
@@ -32,19 +35,23 @@ contract StakeManager is BaseFactory {
 
     struct PoolData {
         uint256 size; // Total tokens staked to pool
-        uint256 last; // Last rewarded block number the user had their rewards calculated
+        uint256 last; // Last rewarded block timestamp user had their rewards calculated
         uint256 arps; // Accumulated rewards per share times MAGIC
-        uint256 perBlockReward; // Daily base Token rewards per block
+        uint256 perSecondReward; // Daily base Token rewards per second
     }
 
     struct ConfigData {
+        bool isActive; // stake deposit status
         uint8 minDurationDay; // default 30 day
-        uint32 dailyFPTMax; // for FPT to earn FPT
-        uint32 dailyFPTMin; // for AFT to earn FPT
+        uint256 dailyFPTMax; // for FPT to earn FPT
+        uint256 dailyFPTMin; // for AFT to earn FPT
     }
 
     // big number to perform mul and div operations
     uint256 private constant MAGIC = 1e12;
+
+    // total seconds in day
+    uint256 private constant DAILY_SECONDS = 86400;
 
     // _pools[tokenType] = pool
     mapping(TokenTypes => PoolData) private _pools;
@@ -56,22 +63,17 @@ contract StakeManager is BaseFactory {
     ConfigData private _config;
 
     constructor(IContractFactory _factory) BaseFactory(_factory) {
-        _setConfig(ConfigData({minDurationDay: 2, dailyFPTMax: 2000, dailyFPTMin: 1000}));
+        _setConfig(ConfigData({isActive: true, minDurationDay: 2, dailyFPTMax: 2000 ether, dailyFPTMin: 1000 ether}));
     }
 
     function _setConfig(ConfigData memory input) private {
-        require(input.dailyFPTMax > 0, "dailyFPTMax");
-        require(input.dailyFPTMin > 0, "dailyFPTMin");
+        require(input.dailyFPTMax >= DAILY_SECONDS, "dailyFPTMax");
+        require(input.dailyFPTMin >= DAILY_SECONDS, "dailyFPTMin");
         require(input.minDurationDay > 0 && input.minDurationDay < 250, "minDurationDay");
 
-        uint32 dailyBlock = factory.getDailyBlock();
-        uint256 highReward = input.dailyFPTMax.toWei();
-        uint256 lowReward = input.dailyFPTMin.toWei();
-        require(dailyBlock > 0, "dailyBlock");
-
         _config = input;
-        _pools[TokenTypes.Governance].perBlockReward = highReward / dailyBlock;
-        _pools[TokenTypes.Utility].perBlockReward = lowReward / dailyBlock;
+        _pools[TokenTypes.Governance].perSecondReward = input.dailyFPTMax / DAILY_SECONDS;
+        _pools[TokenTypes.Utility].perSecondReward = input.dailyFPTMin / DAILY_SECONDS;
     }
 
     function setConfig(ConfigData calldata input) external onlyRole(MANAGER_ROLE) {
@@ -96,11 +98,12 @@ contract StakeManager is BaseFactory {
     }
 
     function _updatePoolRewards(PoolData storage pool, uint256 amount, bool isDown) private {
+        uint256 timestamp = block.timestamp;
         if (pool.size > 0) {
-            uint256 rewards = (block.number - pool.last) * pool.perBlockReward;
+            uint256 rewards = (timestamp - pool.last) * pool.perSecondReward;
             pool.arps = pool.arps + ((rewards * MAGIC) / pool.size);
         }
-        pool.last = block.number;
+        pool.last = timestamp;
         if (isDown) {
             pool.size -= amount;
         } else {
@@ -119,15 +122,17 @@ contract StakeManager is BaseFactory {
     function _calcRewards(PoolData storage pool, StakerData storage staker) private view returns (uint256 rewards) {
         uint256 accPerShare = pool.arps;
         uint256 last = pool.last;
-        if (block.number > last) {
-            uint256 tokenReward = ((block.number - last) * pool.perBlockReward);
+        uint256 timestamp = block.timestamp;
+        if (timestamp > last) {
+            uint256 tokenReward = ((timestamp - last) * pool.perSecondReward);
             accPerShare = accPerShare + ((tokenReward * MAGIC) / pool.size);
         }
         rewards = (((staker.amount * accPerShare) / MAGIC) - staker.debt) + staker.unclaimed;
     }
 
     function deposit(TokenTypes tokenType, uint256 amount) external whenNotPaused nonReentrant {
-        require(amount >= 1e18, "Min amount 1");
+        if (_config.isActive == false) revert Inactive();
+        if (amount < 1e18) revert MinAmountMustBe(1);
 
         address sender = msg.sender;
         IBaseERC20 planetToken = factory.planetToken();
@@ -135,11 +140,17 @@ contract StakeManager is BaseFactory {
 
         // check balances
         if (tokenType == TokenTypes.Governance) {
-            require(planetToken.balanceOf(sender) >= amount, "No balance");
+            if (amount > planetToken.balanceOf(sender)) {
+                revert InsufficientBalance();
+            }
+            planetToken.operatorTransfer(sender, address(this), amount);
         } else if (tokenType == TokenTypes.Utility) {
-            require(farmingToken.balanceOf(sender) >= amount, "No balance");
+            if (amount > farmingToken.balanceOf(sender)) {
+                revert InsufficientBalance();
+            }
+            farmingToken.operatorTransfer(sender, address(this), amount);
         } else {
-            revert("U:TokenType");
+            revert NotExists();
         }
 
         StakerData storage staker = _stakers[tokenType][sender];
@@ -158,25 +169,19 @@ contract StakeManager is BaseFactory {
             staker.endTime = _config.minDurationDay.createEndTime(1 days);
         }
 
-        // burn staker tokens
-        if (tokenType == TokenTypes.Governance) {
-            planetToken.operatorBurn(sender, amount);
-        } else if (tokenType == TokenTypes.Utility) {
-            farmingToken.operatorBurn(sender, amount);
-        }
-
         // send event
         emit Deposit(sender, amount, tokenType);
     }
 
     function withdraw(TokenTypes tokenType) external whenNotPaused nonReentrant {
-        require(tokenType == TokenTypes.Governance || tokenType == TokenTypes.Utility, "U:TokenType");
+        if (tokenType != TokenTypes.Governance && tokenType != TokenTypes.Utility) revert NotExists();
+
         address sender = msg.sender;
         StakerData storage staker = _stakers[tokenType][sender];
-
         uint256 amount = staker.amount;
-        require(amount > 0, "No Staked token");
-        require(block.timestamp > staker.endTime, "Staking not expired");
+
+        if (amount == 0) revert InsufficientBalance();
+        if (block.timestamp < staker.endTime) revert StakingPeriodNotYetOver();
 
         PoolData storage pool = _pools[tokenType];
 
@@ -185,23 +190,25 @@ contract StakeManager is BaseFactory {
 
         // calc all rewards
         uint256 reward = (((staker.amount * pool.arps) / MAGIC) - staker.debt) + staker.unclaimed;
-        require(reward > 0, "No rewards");
 
         staker.amount = 0;
         staker.unclaimed = 0;
         staker.endTime = 0;
         staker.debt = 0;
 
-        // mint tokens to staker
+        IBaseERC20 planetToken = factory.planetToken();
         if (tokenType == TokenTypes.Governance) {
-            factory.planetToken().operatorMint(sender, reward + amount);
+            planetToken.operatorTransfer(address(this), sender, amount);
         } else if (tokenType == TokenTypes.Utility) {
-            factory.farmingToken().operatorMint(sender, amount);
-            factory.planetToken().operatorMint(sender, reward);
+            factory.farmingToken().operatorTransfer(address(this), sender, amount);
+        }
+
+        if (reward > 0) {
+            planetToken.operatorMint(sender, reward);
         }
 
         // send event
-        emit Withdraw(sender, amount, tokenType);
+        emit Withdraw(sender, amount, reward, tokenType);
     }
 
     function getInfo(address from) external view returns (StakerInfo[] memory result) {
@@ -223,34 +230,34 @@ contract StakeManager is BaseFactory {
                 continue;
             }
 
-            uint256 perBlockReward = ((staker.amount / (pool.size / MAGIC)) * pool.perBlockReward) / MAGIC;
+            uint256 perSecondReward = ((staker.amount / (pool.size / MAGIC)) * pool.perSecondReward) / MAGIC;
 
             result[i] = StakerInfo({
                 tokenType: tTypes[i],
                 minDurationDay: _config.minDurationDay,
-                dailyPrizePool: tTypes[i] == TokenTypes.Governance ? _config.dailyFPTMax : _config.dailyFPTMin,
                 remainTime: staker.endTime.remainTime(),
+                dailyPrizePool: tTypes[i] == TokenTypes.Governance ? _config.dailyFPTMax : _config.dailyFPTMin,
                 totalStaked: staker.amount,
-                currentReward: _calcRewards(pool, staker),
-                perBlockReward: perBlockReward,
+                estimatedReward: _calcRewards(pool, staker),
+                perSecondReward: perSecondReward,
                 balance: _balance(tTypes[i], from),
                 poolSize: pool.size
             });
         }
     }
 
-    function calculateEarn(TokenTypes tokenType, uint64 stakeAmount) external view returns (uint256 perBlockReward, uint256 dailyEarn) {
+    function calculateEarn(TokenTypes tokenType, uint64 stakeAmount) external view returns (uint256 perSecondReward, uint256 dailyEarn) {
         require(stakeAmount > 0, "stakeAmount");
         require(tokenType == TokenTypes.Governance || tokenType == TokenTypes.Utility, "U:TokenType");
         uint256 amount = stakeAmount.toWei();
-        uint256 dailyBlock = factory.getDailyBlock();
+
         PoolData storage pool = _pools[tokenType];
         if (pool.size == 0) {
-            return (pool.perBlockReward, pool.perBlockReward * dailyBlock);
+            return (pool.perSecondReward, pool.perSecondReward * DAILY_SECONDS);
         }
         uint256 size = pool.size + amount;
         size = amount / (size / MAGIC);
-        perBlockReward = (size * pool.perBlockReward) / MAGIC;
-        dailyEarn = perBlockReward * dailyBlock;
+        perSecondReward = (size * pool.perSecondReward) / MAGIC;
+        dailyEarn = perSecondReward * DAILY_SECONDS;
     }
 }

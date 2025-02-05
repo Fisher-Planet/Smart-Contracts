@@ -7,6 +7,4 @@ pragma solidity ^0.8.20;
  */
 interface ITournaments {
     function onScoreChanged(address from, uint32 score) external;
-
-    function getTopListAddress() external view returns (address[] memory result);
 }

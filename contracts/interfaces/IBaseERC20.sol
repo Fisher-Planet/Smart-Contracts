@@ -8,8 +8,6 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
  * Required for a base factory contract structure.
  */
 interface IBaseERC20 is IERC20 {
-    function getAuth(address account) external view returns (bool);
-
     function operatorMint(address to, uint256 amount) external;
 
     function operatorBurn(address from, uint256 amount) external;

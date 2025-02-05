@@ -22,10 +22,7 @@ contract PlayerManager is BaseFactory, IPlayerManager {
 
     struct PlayerInfo {
         bool Ready;
-        uint8 BlockPeriod;
-        uint8 AuthStatus; // 0:none, 1:only FPT, 2:only AFT, 3:full auth
         uint16 NftMarketFee;
-        uint32 DailyBlock;
         string Nick;
         uint64 LoyalScore;
         uint256 PrimaryBalance;
@@ -172,6 +169,10 @@ contract PlayerManager is BaseFactory, IPlayerManager {
         }
     }
 
+    // ************ REMOVE WHEN LIVE !!! ************
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    mapping(address => bool) private _testPlayersMintMap;
+
     function registerNick(bytes16 input) external whenNotPaused nonReentrant {
         address sender = msg.sender;
         sender.throwIfEmpty();
@@ -195,6 +196,19 @@ contract PlayerManager is BaseFactory, IPlayerManager {
         if (!player.Ready) {
             player.Ready = true;
         }
+
+        // ************ REMOVE WHEN LIVE !!! ************
+        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        // this only for test players. 50k each
+
+        if (!_testPlayersMintMap[sender]) {
+            _testPlayersMintMap[sender] = true;
+            factory.planetToken().operatorMint(sender, 50000 ether);
+            factory.farmingToken().operatorMint(sender, 50000 ether);
+        }
+
+        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        // *********************************************
     }
 
     /**
@@ -238,26 +252,12 @@ contract PlayerManager is BaseFactory, IPlayerManager {
 
         IBaseERC20 planetToken = factory.planetToken();
         IBaseERC20 farmingToken = factory.farmingToken();
-        uint8 authStatus = 0;
-        if (planetToken.getAuth(account) == true) {
-            authStatus = 1;
-        }
-        if (farmingToken.getAuth(account) == true) {
-            if (authStatus == 1) {
-                authStatus = 3;
-            } else {
-                authStatus = 2;
-            }
-        }
 
         PlayerData storage player = _account[account];
         result = PlayerInfo({
             Ready: player.Ready,
-            BlockPeriod: factory.getBlockPeriod(),
-            AuthStatus: authStatus,
             NftMarketFee: factory.nftMarket().getFee(),
             LoyalScore: player.LoyalScore,
-            DailyBlock: factory.getDailyBlock(),
             PrimaryBalance: planetToken.balanceOf(account),
             SecondaryBalance: farmingToken.balanceOf(account),
             NativeBalance: account.balance,

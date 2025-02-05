@@ -8,7 +8,13 @@ import "./IBaseFungible.sol";
  * Required for a base factory contract structure.
  */
 interface IFishFactory is IBaseFungible {
-    function get(uint256 tokenId) external view returns (FishMetaData memory);
+    function getRarity(uint256 tokenId) external view returns (uint8);
+
+    function getCreatureType(uint256 tokenId) external view returns (uint8);
 
     function getProduction(uint256 tokenId) external view returns (uint16);
+
+    function get(uint256 tokenId) external view returns (FishMetaData memory);
+
+    function getAll() external view returns (FishMetaData[] memory result);
 }

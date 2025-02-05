@@ -26,8 +26,8 @@ contract AquaFarming is BaseFactory, IAquaFarming {
 
     struct AquaRewardInfo {
         uint256 totalProduction;
-        uint256 currentReward;
-        uint256 perBlockReward;
+        uint256 estimatedReward;
+        uint256 perSecondReward;
         uint256 totalFish;
         uint256 poolSize;
         uint256 dailyPrizePool;
@@ -36,11 +36,14 @@ contract AquaFarming is BaseFactory, IAquaFarming {
     // big number to perform mul and div operations
     uint256 private constant MAGIC = 1e12;
 
-    // daily prize
-    uint32 private _dailyPrizePool;
+    // total seconds in day
+    uint256 private constant DAILY_SECONDS = 86400;
 
-    // per block reward tokens
-    uint256 private _perBlockReward;
+    // daily prize pool
+    uint256 private _dailyPrizePool;
+
+    // reward amount per second
+    uint256 private _perSecondReward;
 
     // staking pools
     AquaPoolData private _pool;
@@ -52,34 +55,32 @@ contract AquaFarming is BaseFactory, IAquaFarming {
     mapping(uint32 => mapping(address => uint64)) private _balances;
 
     constructor(IContractFactory _factory) BaseFactory(_factory) {
-        _setBlockReward(5000);
+        _setReward(5000 ether);
     }
 
-    function _setBlockReward(uint32 dailyPrizePool) private {
-        require(dailyPrizePool > 0, "dailyPrizePool");
-        uint32 dailyBlock = factory.getDailyBlock();
-        require(dailyBlock > 0, "dailyBlock");
-        uint256 perBlockReward = dailyPrizePool.toWei();
+    function _setReward(uint256 dailyPrizePool) private {
+        require(dailyPrizePool >= DAILY_SECONDS, "dailyPrizePool");
         _dailyPrizePool = dailyPrizePool;
-        _perBlockReward = perBlockReward / dailyBlock;
+        _perSecondReward = dailyPrizePool / DAILY_SECONDS;
     }
 
-    function setBlockReward(uint32 dailyPrizePool) external onlyRole(MANAGER_ROLE) {
-        _setBlockReward(dailyPrizePool);
+    function setReward(uint256 dailyPrizePool) external onlyRole(MANAGER_ROLE) {
+        _setReward(dailyPrizePool);
     }
 
-    function getBlockReward() external view returns (uint32 dailyPrizePool, uint256 perBlockReward) {
+    function getBlockReward() external view returns (uint256 dailyPrizePool, uint256 perSecondReward) {
         dailyPrizePool = _dailyPrizePool;
-        perBlockReward = _perBlockReward;
+        perSecondReward = _perSecondReward;
     }
 
     function _updatePoolRewards(AquaStakerData storage staker, uint256 amount, uint8 action) private returns (uint256 pendingRewards) {
+        uint256 timestamp = block.timestamp;
         // update _pool
         if (_pool.size > 0) {
-            uint256 rewards = (block.number - _pool.last) * _perBlockReward;
+            uint256 rewards = (timestamp - _pool.last) * _perSecondReward;
             _pool.arps = _pool.arps + ((rewards * MAGIC) / _pool.size);
         }
-        _pool.last = block.number;
+        _pool.last = timestamp;
 
         // staker reward actions
         if (staker.amount > 0) {
@@ -222,25 +223,26 @@ contract AquaFarming is BaseFactory, IAquaFarming {
         return _pool;
     }
 
-    function _calcRewards(AquaStakerData storage staker) private view returns (uint256 rewards, uint256 perBlockReward) {
+    function _calcRewards(AquaStakerData storage staker) private view returns (uint256 rewards, uint256 perSecondReward) {
         if (_pool.size == 0) {
             return (staker.unclaimed, 0);
         }
         uint256 accPerShare = _pool.arps;
         uint256 last = _pool.last;
-        if (block.number > last) {
-            uint256 tokenReward = ((block.number - last) * _perBlockReward);
+        uint256 timestamp = block.timestamp;
+        if (timestamp > last) {
+            uint256 tokenReward = ((timestamp - last) * _perSecondReward);
             accPerShare = accPerShare + ((tokenReward * MAGIC) / _pool.size);
         }
         rewards = (((staker.amount * accPerShare) / MAGIC) - staker.debt) + staker.unclaimed;
-        perBlockReward = ((staker.amount / (_pool.size / MAGIC)) * _perBlockReward) / MAGIC;
+        perSecondReward = ((staker.amount / (_pool.size / MAGIC)) * _perSecondReward) / MAGIC;
     }
 
     function getRewardInfo(address from) external view returns (AquaRewardInfo memory result) {
         from.throwIfEmpty();
         AquaStakerData storage staker = _stakers[from];
         uint256 rewards;
-        uint256 perBlockReward;
+        uint256 perSecondReward;
         if (staker.amount > 0) {
             uint256 fishCount;
             uint256[] memory ids = factory.fishFactory().tokenIds();
@@ -248,15 +250,15 @@ contract AquaFarming is BaseFactory, IAquaFarming {
                 fishCount += _balances[uint32(ids[i])][from];
             }
 
-            (rewards, perBlockReward) = _calcRewards(staker);
+            (rewards, perSecondReward) = _calcRewards(staker);
             result.totalProduction = staker.amount;
-            result.currentReward = rewards;
-            result.perBlockReward = perBlockReward;
+            result.estimatedReward = rewards;
+            result.perSecondReward = perSecondReward;
             result.totalFish = fishCount;
             result.poolSize = _pool.size;
             result.dailyPrizePool = _dailyPrizePool;
         } else {
-            result.currentReward = staker.unclaimed;
+            result.estimatedReward = staker.unclaimed;
             result.poolSize = _pool.size;
             result.dailyPrizePool = _dailyPrizePool;
         }
@@ -282,16 +284,15 @@ contract AquaFarming is BaseFactory, IAquaFarming {
         }
     }
 
-    function calculateEarn(uint64 productionAmount) external view returns (uint256 perBlockReward, uint256 dailyEarn) {
+    function calculateEarn(uint64 productionAmount) external view returns (uint256 perSecondReward, uint256 dailyEarn) {
         require(productionAmount > 0, "productionAmount");
         uint256 amount = productionAmount.toWei();
-        uint256 dailyBlock = factory.getDailyBlock();
         if (_pool.size == 0) {
-            return (_perBlockReward, _perBlockReward * dailyBlock);
+            return (_perSecondReward, _dailyPrizePool);
         }
         uint256 size = _pool.size + amount;
         size = amount / (size / MAGIC);
-        perBlockReward = (size * _perBlockReward) / MAGIC;
-        dailyEarn = perBlockReward * dailyBlock;
+        perSecondReward = (size * _perSecondReward) / MAGIC;
+        dailyEarn = perSecondReward * DAILY_SECONDS;
     }
 }

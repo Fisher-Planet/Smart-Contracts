@@ -8,12 +8,15 @@ contract AquaFarmingToken is BaseERC20 {
         _mint(msg.sender, 500_000 ether);
     }
 
-    function mint(uint256 amount) external onlyRole(MANAGER_ROLE) {
+    function mint(address to, uint256 amount) external whenNotPaused onlyRole(MANAGER_ROLE) {
         require(amount > 0, "amount");
-        _mint(msg.sender, amount);
+        if (to == address(0)) {
+            to = msg.sender;
+        }
+        _mint(to, amount);
     }
 
-    function burn(uint256 amount) external onlyRole(MANAGER_ROLE) {
+    function burn(uint256 amount) external whenNotPaused onlyRole(MANAGER_ROLE) {
         _burn(msg.sender, amount);
     }
 }

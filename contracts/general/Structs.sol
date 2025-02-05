@@ -2,15 +2,18 @@
 
 pragma solidity ^0.8.20;
 
+error TokenIdRequire();
 error TokenNotExists(uint256 tokenId);
 error NotExists();
 error ArrayEmpty();
 error ArrayOverflow();
 error NotAllowed();
 error InsufficientBalance();
+error NoAssetsInAccount(uint256 tokenId);
 error Exists();
 error InvalidValue(uint256 value);
 error PriceEmpty();
+error PacketDataRequired();
 
 // Enum Token Rarity
 enum RarityTypes {
@@ -77,13 +80,4 @@ struct BoatMetaData {
 struct Amounts {
     uint32 Id;
     uint64 Balance;
-}
-
-/* ContractFactory  */
-//------------------
-struct AppConfig {
-    // one block completion time in seconds. default : 5
-    uint8 BlockPeriod;
-    // daily total blocks. default : 17280
-    uint32 DailyBlock;
 }
