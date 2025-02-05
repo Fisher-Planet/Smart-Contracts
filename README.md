@@ -1,4 +1,4 @@
-[![Fisher Planet](https://fisherplanet.org/Content/uploads/Menuler/big/docs.jpg "Fisher Planet")](https://fisherplanet.org "Fisher Planet")
+[![Fisher Planet](https://fisherplanet.org/Content/uploads/Menuler/big/docs.png "Fisher Planet")](https://fisherplanet.org "Fisher Planet")
 
 ## OVERVIEW
 
@@ -16,6 +16,9 @@ They can also earn by participating in Tournaments, Staking, and using the Refer
 Fisher Planet game is built entirely on blockchain. That's why we don't get data from external servers. That's why it's decentralized. There are 15 Smart Contracts in the Fisher Planet Universe.
 
 All contracts are designed to interact with each other.Each contract has various usage scenarios in the game.
+
+## WARNING
+Contracts are updated from time to time because we are still on testnet, so there may be updates or new contracts that have not been pushed here yet.
 
 ## JOIN US
 Web : https://fisherplanet.org
